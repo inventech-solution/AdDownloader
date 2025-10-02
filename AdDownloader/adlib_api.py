@@ -1,7 +1,8 @@
 """This module provides the call to the Meta Ad Library API for ad data retrieval."""
 
+import json
 import pandas as pd
-from collections.abc import Mapping
+from collections.abc import Iterable
 import requests
 import os
 
@@ -162,29 +163,49 @@ class AdLibAPI:
 
         # search page ids - the file must contain at least one column called page_id
         if search_page_ids is not None:
-            if is_valid_excel_file(search_page_ids):
+            if isinstance(search_page_ids, Iterable) and not isinstance(search_page_ids, (str, bytes)):
+                search_page_ids_list = [str(page_id) for page_id in search_page_ids if str(page_id).strip()]
+                if search_page_ids_list:
+                    params["search_page_ids"] = search_page_ids_list
+                    self.request_parameters = params
+                else:
+                    print('No valid page ids provided in the iterable.')
+                    self.logger.error('No valid page ids provided in the iterable.')
+            elif is_valid_excel_file(search_page_ids):
                 path = os.path.join("data", search_page_ids)
                 try:
                     data = pd.read_excel(path)
                 except:
                     try:
                         data = pd.read_csv(path)
-                    except:
+                    except Exception:
                         print('Unable to load page ids data.')
                         self.logger.error('Unable to load page ids data.')
-                try:
-                    search_page_ids_list = data['page_id'].astype(str).tolist()
-                    params["search_page_ids"] = search_page_ids_list
-                    self.request_parameters = params
-                except:
-                    print('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
-                    self.logger.error('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
+                        data = None
+                if data is not None:
+                    try:
+                        search_page_ids_list = data['page_id'].astype(str).tolist()
+                        params["search_page_ids"] = search_page_ids_list
+                        self.request_parameters = params
+                    except Exception:
+                        print('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
+                        self.logger.error('Unable to read the page ids. Check if there exists a column `page_id` in your data.')
             else:
                 print(f"Excel file not found.")
+                self.logger.error('Excel file not found.')
 
         elif search_terms is not None:
-            params["search_terms"] = search_terms
-            self.request_parameters = params
+            if isinstance(search_terms, Iterable) and not isinstance(search_terms, (str, bytes)):
+                search_terms_list = [str(term).strip() for term in search_terms if str(term).strip()]
+                if search_terms_list:
+                    params["search_terms"] = ",".join(search_terms_list)
+                    self.request_parameters = params
+                else:
+                    print('No valid search terms provided in the iterable.')
+                    self.logger.error('No valid search terms provided in the iterable.')
+            else:
+                params["search_terms"] = search_terms
+                self.request_parameters = params
 
         else:
             print('You need to specify either pages ids or search terms.')
