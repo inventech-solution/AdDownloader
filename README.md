@@ -23,6 +23,7 @@ If you use AdDownloader in your research or project, please *refer to and cite* 
 - [Usage](#usage)
     - [As a Python package](#as-a-python-package)
     - [As a CLI](#as-a-cli)
+    - [Via the FastAPI service](#via-the-fastapi-service)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -226,7 +227,75 @@ run_analysis()
 
 Once the CLI tool is running, more instructions and questions will appear in the cmd/terminal that will guide the API call.
 
-For further help and additional functionalities see the [AdDownloader documentation](https://addownloader.readthedocs.io/en/latest/index.html). 
+For further help and additional functionalities see the [AdDownloader documentation](https://addownloader.readthedocs.io/en/latest/index.html).
+
+### Via the FastAPI service
+
+AdDownloader also exposes a FastAPI application for programmatic use.
+
+#### Run the service
+
+Launch an ASGI server that imports the reusable `FastAPI` instance defined in `AdDownloader/api/service.py`:
+
+```bash
+uvicorn AdDownloader.api.service:app --reload
+```
+
+Add `--host`/`--port` options if you need the service to listen on a different interface or port.
+
+#### Endpoint overview
+
+* **Method & path:** `POST /download`
+* **Purpose:** Starts an ad metadata download (and optional media scraping) using the provided parameters.
+
+#### Request body schema (`application/json`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `access_token` | string | **Required.** Facebook Ad Library token. |
+| `project_name` | string | Optional; defaults to a UTC timestamp when omitted. |
+| `ad_reached_countries` | list of strings or comma-separated string | Optional; defaults to `"NL"`. Values are normalized to uppercase and deduplicated. |
+| `date_range` | object `{ "min": "YYYY-MM-DD", "max": "YYYY-MM-DD" }` | Optional; validated so `min ≤ max`. Defaults to `2023-01-01` through today. |
+| `page_ids` | list of strings or comma-separated string | Optional, but either `page_ids` or `ad_library_ids` must be provided. Empty values are stripped. |
+| `ad_library_ids` | list of strings | Optional alternative to `page_ids`. |
+| `ad_type` | string | Defaults to `"ALL"`; forwarded to the downloader. |
+| `fields` | string | Optional CSV of Ad Library fields to request. |
+| `media_limit` | positive integer | Caps the number of ads processed for media scraping. |
+| `media_ad_ids` | list of strings | Restrict media scraping to explicit ad IDs. |
+| `random_sample_media` | boolean | Defaults to `true`; ignored when `media_ad_ids` are supplied. |
+| `additional_parameters` | object | Arbitrary extra query parameters passed through to the Ad Library request. |
+
+#### Example request
+
+```json
+{
+  "access_token": "EAAB...snip...",
+  "project_name": "my-report",
+  "ad_reached_countries": ["US", "CA"],
+  "date_range": {"min": "2023-09-01", "max": "2023-09-30"},
+  "page_ids": ["1234567890"],
+  "fields": "id,ad_snapshot_url,impressions",
+  "media_limit": 10,
+  "random_sample_media": false,
+  "additional_parameters": {"search_type": "KEYWORD"}
+}
+```
+
+Call the endpoint with any HTTP client, for example:
+
+```bash
+curl -X POST http://localhost:8000/download \
+  -H "Content-Type: application/json" \
+  -d @request.json
+```
+
+Successful responses return JSON with:
+
+* `project`: Metadata about the download session (project name, timestamp, resolved parameters).
+* `summary`: Counts of ads processed and media download statistics.
+* `ads`: Array of ad metadata records fetched from the Meta Ad Library.
+
+Errors use FastAPI's default structure (e.g., `{"detail": "message"}`) alongside relevant HTTP status codes: `400` for validation issues, `404` when no ads match the query, and `502` for unexpected downstream failures.
 
 ## Image Download Setup
 On some machines it might happen that a potential binary version mismatch might occur between the installed Chrome version and the required ChromeDriver. We recommend that users first try running the image download functionality of AdDownloader as it is. If an error occurs related to a version mismatch, we advise downloading the appropriate version of ChromeDriver directly from the official [ChromeDriver website](https://developer.chrome.com/docs/chromedriver/downloads) and ensuring that it matches the version of Chrome installed on their machine. Once downloaded, placing the ChromeDriver executable in a directory included in the system’s PATH should help avoid version mismatches and related errors.
